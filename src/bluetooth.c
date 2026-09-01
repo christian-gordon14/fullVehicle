@@ -1,4 +1,5 @@
 #include "bluetooth.h"
+#include "bluetoothReceive.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -6,89 +7,226 @@
 #include <stdint.h>
 
 #include "esp_log.h"
-#include "esp_err.h"
-#include "nvs_flash.h"
-
 #include "nimble/nimble_port.h"
 #include "nimble/nimble_port_freertos.h"
-
 #include "host/ble_hs.h"
-#include "host/ble_uuid.h"
+#include "host/ble_hs_id.h"
 #include "host/ble_gap.h"
 #include "host/ble_gatt.h"
-
 #include "services/gap/ble_svc_gap.h"
 #include "services/gatt/ble_svc_gatt.h"
 
-#include "wheelSpeeds.h"
-#include "imu.h"
-
 static const char *TAG = "BLE";
 
-static void start_advertising(void);
-
+#define DEVICE_NAME "ESP32_VEHICLE"
 
 /* ============================================================
  * UUIDs
+ *
+ * Python sees these UUIDs:
+ *
+ * SENSOR:
+ * f1debc9a-7856-3412-7856-341278563412
+ *
+ * COMMAND:
+ * f2debc9a-7856-3412-7856-341278563412
+ *
+ * SERVICE:
+ * 12345678-1234-5678-1234-56789abcdef0
+ *
+ * IMPORTANT:
+ * BLE_UUID128_INIT() uses the little-endian byte representation
+ * used internally by NimBLE.
  * ============================================================ */
+
+/* Python -> ESP32 */
+/* ESP32 -> Python */
+static const ble_uuid128_t sensor_uuid =
+    BLE_UUID128_INIT(
+        0x12, 0x34, 0x56, 0x78,
+        0x12, 0x34,
+        0x56, 0x78,
+        0x12, 0x34,
+        0x56, 0x78,
+        0x9a, 0xbc, 0xde, 0xf1
+    );
+
+static const ble_uuid128_t command_uuid =
+    BLE_UUID128_INIT(
+        0x12, 0x34, 0x56, 0x78,
+        0x12, 0x34,
+        0x56, 0x78,
+        0x12, 0x34,
+        0x56, 0x78,
+        0x9a, 0xbc, 0xde, 0xf2
+    );
 
 static const ble_uuid128_t service_uuid =
     BLE_UUID128_INIT(
-        0x12, 0x34, 0x56, 0x78,
-        0x12, 0x34, 0x56, 0x78,
-        0x12, 0x34, 0x56, 0x78,
-        0x9A, 0xBC, 0xDE, 0xF0
+        0xf0, 0xde, 0xbc, 0x9a,
+        0x78, 0x56,
+        0x34, 0x12,
+        0x78, 0x56,
+        0x34, 0x12,
+        0x78, 0x56, 0x34, 0x12
     );
-
-static const ble_uuid128_t characteristic_uuid =
-    BLE_UUID128_INIT(
-        0x12, 0x34, 0x56, 0x78,
-        0x12, 0x34, 0x56, 0x78,
-        0x12, 0x34, 0x56, 0x78,
-        0x9A, 0xBC, 0xDE, 0xF1
-    );
-
 
 /* ============================================================
  * BLE state
  * ============================================================ */
 
-static uint16_t connection_handle =
-    BLE_HS_CONN_HANDLE_NONE;
-
-static uint16_t characteristic_handle;
-
-static bool notifications_enabled = false;
-
-/*
- * NimBLE determines the appropriate BLE address type
- * during synchronization.
- */
 static uint8_t ble_addr_type;
 
+static uint16_t sensor_val_handle = 0;
+static uint16_t command_val_handle = 0;
+
+static uint16_t current_conn_handle = BLE_HS_CONN_HANDLE_NONE;
 
 /* ============================================================
- * GATT characteristic access callback
+ * Forward declarations
  * ============================================================ */
 
-static int sensor_data_access(
+static void ble_on_sync(void);
+static void ble_on_reset(int reason);
+static void ble_host_task(void *param);
+
+static int ble_gap_event(
+    struct ble_gap_event *event,
+    void *arg
+);
+
+static int sensor_access(
+    uint16_t conn_handle,
+    uint16_t attr_handle,
+    struct ble_gatt_access_ctxt *ctxt,
+    void *arg
+);
+
+static int command_access(
+    uint16_t conn_handle,
+    uint16_t attr_handle,
+    struct ble_gatt_access_ctxt *ctxt,
+    void *arg
+);
+
+/* ============================================================
+ * Sensor characteristic
+ * ============================================================ */
+
+static int sensor_access(
     uint16_t conn_handle,
     uint16_t attr_handle,
     struct ble_gatt_access_ctxt *ctxt,
     void *arg
 )
 {
-    /*
-     * We aren't handling READ requests yet.
-     * Sensor data will be sent using notifications.
-     */
+    if (ctxt == NULL)
+    {
+        return BLE_ATT_ERR_UNLIKELY;
+    }
 
-    return 0;
+    if (ctxt->op == BLE_GATT_ACCESS_OP_READ_CHR)
+    {
+        /*
+         * Nothing is returned for a normal READ.
+         *
+         * Sensor data is sent using notifications.
+         */
+        return 0;
+    }
+
+    return BLE_ATT_ERR_UNLIKELY;
 }
 
+/* ============================================================
+ * Command characteristic
+ * ============================================================ */
+
+static int command_access(
+    uint16_t conn_handle,
+    uint16_t attr_handle,
+    struct ble_gatt_access_ctxt *ctxt,
+    void *arg
+)
+{
+    if (ctxt == NULL)
+    {
+        ESP_LOGE(TAG, "NULL GATT context");
+        return BLE_ATT_ERR_UNLIKELY;
+    }
+
+    if (ctxt->op != BLE_GATT_ACCESS_OP_WRITE_CHR)
+    {
+        ESP_LOGW(TAG, "Unexpected GATT operation");
+        return BLE_ATT_ERR_UNLIKELY;
+    }
+
+    if (ctxt->om == NULL)
+    {
+        ESP_LOGE(TAG, "NULL mbuf");
+        return BLE_ATT_ERR_UNLIKELY;
+    }
+
+    uint16_t length = OS_MBUF_PKTLEN(ctxt->om);
+
+    ESP_LOGI(
+        TAG,
+        "Received command: %u bytes",
+        length
+    );
+
+    if (length == 0)
+    {
+        ESP_LOGW(TAG, "Empty command");
+        return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+    }
+
+    char command[32];
+
+    if (length >= sizeof(command))
+    {
+        length = sizeof(command) - 1;
+    }
+
+    int rc = ble_hs_mbuf_to_flat(
+        ctxt->om,
+        command,
+        length,
+        NULL
+    );
+
+    if (rc != 0)
+    {
+        ESP_LOGE(
+            TAG,
+            "ble_hs_mbuf_to_flat failed: %d",
+            rc
+        );
+
+        return BLE_ATT_ERR_UNLIKELY;
+    }
+
+    command[length] = '\0';
+
+    ESP_LOGI(
+        TAG,
+        "Command received: '%s'",
+        command
+    );
+
+    /*
+     * Pass the original GATT context to bluetoothReceive.c.
+     */
+    return bluetooth_receive_access(
+        conn_handle,
+        attr_handle,
+        ctxt,
+        arg
+    );
+}
 
 /* ============================================================
- * GATT service definition
+ * GATT services
  * ============================================================ */
 
 static const struct ble_gatt_svc_def gatt_services[] =
@@ -102,31 +240,45 @@ static const struct ble_gatt_svc_def gatt_services[] =
         (struct ble_gatt_chr_def[])
         {
             {
-                .uuid = &characteristic_uuid.u,
+                .uuid = &sensor_uuid.u,
 
-                .access_cb = sensor_data_access,
+                .access_cb = sensor_access,
+
+                .val_handle = &sensor_val_handle,
 
                 .flags =
                     BLE_GATT_CHR_F_READ |
                     BLE_GATT_CHR_F_NOTIFY,
-
-                .val_handle =
-                    &characteristic_handle,
             },
 
-            {0}
+            {
+                .uuid = &command_uuid.u,
+
+                .access_cb = command_access,
+
+                .val_handle = &command_val_handle,
+
+                .flags =
+                    BLE_GATT_CHR_F_WRITE |
+                    BLE_GATT_CHR_F_WRITE_NO_RSP,
+            },
+
+            {
+                0
+            }
         }
     },
 
-    {0}
+    {
+        0
+    }
 };
-
 
 /* ============================================================
  * GAP event handler
  * ============================================================ */
 
-static int gap_event_handler(
+static int ble_gap_event(
     struct ble_gap_event *event,
     void *arg
 )
@@ -137,85 +289,70 @@ static int gap_event_handler(
 
             if (event->connect.status == 0)
             {
-                connection_handle =
+                current_conn_handle =
                     event->connect.conn_handle;
 
                 ESP_LOGI(
                     TAG,
-                    "BLE connected"
+                    "BLE connected, conn_handle=%u",
+                    current_conn_handle
                 );
-
-                notifications_enabled = false;
             }
             else
             {
-                ESP_LOGI(
+                ESP_LOGW(
                     TAG,
                     "BLE connection failed: %d",
                     event->connect.status
                 );
 
-                connection_handle =
+                current_conn_handle =
                     BLE_HS_CONN_HANDLE_NONE;
 
-                notifications_enabled = false;
+                ble_on_sync();
             }
 
             break;
-
 
         case BLE_GAP_EVENT_DISCONNECT:
 
             ESP_LOGI(
                 TAG,
-                "BLE disconnected"
+                "BLE disconnected, reason=%d",
+                event->disconnect.reason
             );
 
-            connection_handle =
+            current_conn_handle =
                 BLE_HS_CONN_HANDLE_NONE;
 
-            notifications_enabled = false;
+            bluetooth_receive_stop();
 
-            /*
-             * Start advertising again so another device
-             * can connect.
-             */
-            start_advertising();
+            ble_on_sync();
 
             break;
-
-
-        case BLE_GAP_EVENT_SUBSCRIBE:
-
-            if (event->subscribe.attr_handle ==
-                characteristic_handle)
-            {
-                notifications_enabled =
-                    event->subscribe.cur_notify;
-
-                ESP_LOGI(
-                    TAG,
-                    "Notifications: %s",
-                    notifications_enabled ?
-                    "enabled" :
-                    "disabled"
-                );
-            }
-
-            break;
-
 
         case BLE_GAP_EVENT_ADV_COMPLETE:
 
             ESP_LOGI(
                 TAG,
-                "Advertising complete"
+                "BLE advertising complete"
             );
 
-            start_advertising();
+            ble_on_sync();
 
             break;
 
+        case BLE_GAP_EVENT_NOTIFY_TX:
+
+            ESP_LOGD(
+                TAG,
+                "Notification TX: conn=%u attr=%u status=%d",
+                event->notify_tx.conn_handle,
+                event->notify_tx.attr_handle,
+                event->notify_tx.status
+            );
+
+            break;
 
         default:
             break;
@@ -224,263 +361,144 @@ static int gap_event_handler(
     return 0;
 }
 
-
 /* ============================================================
- * Start advertising
- * ============================================================ */
-
-static void start_advertising(void)
-{
-    int rc;
-
-    struct ble_hs_adv_fields fields;
-
-    memset(
-        &fields,
-        0,
-        sizeof(fields)
-    );
-
-    /*
-     * General discoverable + BLE only.
-     */
-
-    fields.flags =
-        BLE_HS_ADV_F_DISC_GEN |
-        BLE_HS_ADV_F_BREDR_UNSUP;
-
-
-    /*
-     * Device name.
-     */
-
-    const char *name =
-        "ESP32_VEHICLE";
-
-    fields.name =
-        (uint8_t *)name;
-
-    fields.name_len =
-        strlen(name);
-
-    fields.name_is_complete = 1;
-
-
-    /*
-     * Configure advertising data.
-     */
-
-    rc = ble_gap_adv_set_fields(
-        &fields
-    );
-
-    if (rc != 0)
-    {
-        ESP_LOGE(
-            TAG,
-            "Failed to set advertising fields: %d",
-            rc
-        );
-
-        return;
-    }
-
-
-    /*
-     * Configure advertising parameters.
-     */
-
-    struct ble_gap_adv_params adv_params;
-
-    memset(
-        &adv_params,
-        0,
-        sizeof(adv_params)
-    );
-
-    adv_params.conn_mode =
-        BLE_GAP_CONN_MODE_UND;
-
-    adv_params.disc_mode =
-        BLE_GAP_DISC_MODE_GEN;
-
-
-    /*
-     * Start advertising.
-     *
-     * Use the address type determined by
-     * ble_hs_id_infer_auto().
-     */
-
-    rc = ble_gap_adv_start(
-        ble_addr_type,
-        NULL,
-        BLE_HS_FOREVER,
-        &adv_params,
-        gap_event_handler,
-        NULL
-    );
-
-    if (rc != 0)
-    {
-        ESP_LOGE(
-            TAG,
-            "Failed to start advertising: %d",
-            rc
-        );
-
-        return;
-    }
-
-    ESP_LOGI(
-        TAG,
-        "BLE advertising started"
-    );
-}
-
-
-/* ============================================================
- * BLE synchronization callback
+ * BLE advertising
  * ============================================================ */
 
 static void ble_on_sync(void)
 {
-    int rc;
+    struct ble_hs_adv_fields fields;
+    struct ble_hs_adv_fields rsp_fields;
+    struct ble_gap_adv_params adv_params;
 
-    /*
-     * Make sure the ESP32 has a valid BLE address.
-     *
-     * IMPORTANT:
-     * The second argument must be a valid pointer.
-     * Passing NULL here caused the StoreProhibited crash.
-     */
+    int rc = ble_hs_id_infer_auto(0, &ble_addr_type);
+    if (rc != 0) {
+        ESP_LOGE(TAG, "ble_hs_id_infer_auto failed: %d", rc);
+        return;
+    }
 
-    rc = ble_hs_id_infer_auto(
-        0,
-        &ble_addr_type
+    /* Primary advertisement: flags + service UUID only */
+    memset(&fields, 0, sizeof(fields));
+
+    fields.flags = BLE_HS_ADV_F_DISC_GEN | BLE_HS_ADV_F_BREDR_UNSUP;
+
+    fields.uuids128 = (ble_uuid128_t *)&service_uuid;
+    fields.num_uuids128 = 1;
+    fields.uuids128_is_complete = 1;
+
+    rc = ble_gap_adv_set_fields(&fields);
+    if (rc != 0) {
+        ESP_LOGE(TAG, "ble_gap_adv_set_fields failed: %d", rc);
+        return;
+    }
+
+    /* Scan response: device name */
+    memset(&rsp_fields, 0, sizeof(rsp_fields));
+
+    rsp_fields.name = (uint8_t *)DEVICE_NAME;
+    rsp_fields.name_len = strlen(DEVICE_NAME);
+    rsp_fields.name_is_complete = 1;
+
+    rc = ble_gap_adv_rsp_set_fields(&rsp_fields);
+    if (rc != 0) {
+        ESP_LOGE(TAG, "ble_gap_adv_rsp_set_fields failed: %d", rc);
+        return;
+    }
+
+    memset(&adv_params, 0, sizeof(adv_params));
+    adv_params.conn_mode = BLE_GAP_CONN_MODE_UND;
+    adv_params.disc_mode = BLE_GAP_DISC_MODE_GEN;
+
+    rc = ble_gap_adv_start(ble_addr_type, NULL, BLE_HS_FOREVER,
+                            &adv_params, ble_gap_event, NULL);
+    if (rc != 0) {
+        ESP_LOGE(TAG, "ble_gap_adv_start failed: %d", rc);
+        return;
+    }
+
+    ESP_LOGI(TAG, "Advertising as %s", DEVICE_NAME);
+}
+
+/* ============================================================
+ * BLE reset callback
+ * ============================================================ */
+
+static void ble_on_reset(int reason)
+{
+    ESP_LOGE(
+        TAG,
+        "BLE reset, reason=%d",
+        reason
     );
+
+    current_conn_handle =
+        BLE_HS_CONN_HANDLE_NONE;
+}
+
+/* ============================================================
+ * BLE host task
+ * ============================================================ */
+
+static void ble_host_task(void *param)
+{
+    ESP_LOGI(
+        TAG,
+        "BLE host task started"
+    );
+
+    nimble_port_run();
+
+    nimble_port_freertos_deinit();
+}
+
+/* ============================================================
+ * Public initialization
+ * ============================================================ */
+
+void bluetooth_init(void)
+{
+    ESP_LOGI(
+        TAG,
+        "Initializing BLE"
+    );
+
+    int rc = nimble_port_init();
 
     if (rc != 0)
     {
         ESP_LOGE(
             TAG,
-            "Failed to infer BLE address: %d",
+            "nimble_port_init failed: %d",
             rc
         );
 
         return;
     }
 
-    ESP_LOGI(
-        TAG,
-        "BLE address type: %d",
-        ble_addr_type
-    );
+    ble_hs_cfg.reset_cb =
+        ble_on_reset;
 
-    start_advertising();
-}
-
-
-/* ============================================================
- * NimBLE host task
- * ============================================================ */
-
-static void ble_host_task(void *param)
-{
-    /*
-     * Run the NimBLE host.
-     */
-
-    nimble_port_run();
-
-    /*
-     * This returns when NimBLE shuts down.
-     */
-
-    nimble_port_freertos_deinit();
-}
-
-
-/* ============================================================
- * Initialization
- * ============================================================ */
-
-void bluetooth_init(void)
-{
-    esp_err_t ret;
-
-
-    /*
-     * Initialize NVS.
-     */
-
-    ret = nvs_flash_init();
-
-    if (ret == ESP_ERR_NVS_NO_FREE_PAGES ||
-        ret == ESP_ERR_NVS_NEW_VERSION_FOUND)
-    {
-        ESP_ERROR_CHECK(
-            nvs_flash_erase()
-        );
-
-        ret = nvs_flash_init();
-    }
-
-    ESP_ERROR_CHECK(ret);
-
-
-    /*
-     * Initialize NimBLE.
-     */
-
-    ret = nimble_port_init();
-
-    if (ret != ESP_OK)
-    {
-        ESP_LOGE(
-            TAG,
-            "NimBLE initialization failed: %d",
-            ret
-        );
-
-        return;
-    }
-
-
-    /*
-     * Initialize standard GAP and GATT services.
-     */
+    ble_hs_cfg.sync_cb =
+        ble_on_sync;
 
     ble_svc_gap_init();
 
     ble_svc_gatt_init();
 
-
-    /*
-     * Set device name.
-     */
-
-    ret = ble_svc_gap_device_name_set(
-        "ESP32_VEHICLE"
+    rc = ble_svc_gap_device_name_set(
+        DEVICE_NAME
     );
 
-    if (ret != 0)
+    if (rc != 0)
     {
         ESP_LOGE(
             TAG,
-            "Failed to set BLE device name: %d",
-            ret
+            "ble_svc_gap_device_name_set failed: %d",
+            rc
         );
 
         return;
     }
-
-
-    /*
-     * Register our custom GATT service.
-     */
-
-    int rc;
 
     rc = ble_gatts_count_cfg(
         gatt_services
@@ -497,7 +515,6 @@ void bluetooth_init(void)
         return;
     }
 
-
     rc = ble_gatts_add_svcs(
         gatt_services
     );
@@ -513,161 +530,107 @@ void bluetooth_init(void)
         return;
     }
 
-
-    /*
-     * Configure NimBLE callbacks.
-     */
-
-    ble_hs_cfg.sync_cb =
-        ble_on_sync;
-
-
-    /*
-     * Start NimBLE host task.
-     */
-
-    nimble_port_freertos_init(
-        ble_host_task
+    ESP_LOGI(
+        TAG,
+        "GATT services registered"
     );
 
     ESP_LOGI(
         TAG,
-        "Bluetooth initialized"
+        "Sensor characteristic handle: %u",
+        sensor_val_handle
+    );
+
+    ESP_LOGI(
+        TAG,
+        "Command characteristic handle: %u",
+        command_val_handle
+    );
+
+    nimble_port_freertos_init(
+        ble_host_task
     );
 }
 
-
 /* ============================================================
- * Send sensor data
+ * Public stop
  * ============================================================ */
 
-void bluetooth_send_sensor_data(void)
+void bluetooth_stop(void)
 {
-    /*
-     * Make sure we are connected.
-     */
+    bluetooth_receive_stop();
 
-    if (connection_handle ==
+    ESP_LOGI(
+        TAG,
+        "Bluetooth stop requested"
+    );
+}
+
+/* ============================================================
+ * Send sensor data to Python
+ *
+ * Example:
+ *
+ * bluetooth_notify_sensor(
+ *     "1.0000,2.0000,3.0000,..."
+ * );
+ *
+ * This sends the string through the SENSOR characteristic.
+ * ============================================================ */
+
+bool bluetooth_notify_sensor(
+    const char *data
+)
+{
+    if (data == NULL)
+    {
+        return false;
+    }
+
+    if (current_conn_handle ==
         BLE_HS_CONN_HANDLE_NONE)
     {
-        return;
+        return false;
     }
 
-
-    /*
-     * Make sure the client subscribed to
-     * notifications.
-     */
-
-    if (!notifications_enabled)
+    if (sensor_val_handle == 0)
     {
-        return;
+        return false;
     }
 
+    uint16_t length =
+        strlen(data);
 
-    /*
-     * Get wheel speeds.
-     */
+    if (length == 0)
+    {
+        return false;
+    }
 
-    float fl =
-        wheelSpeed_get(WHEEL_FL);
-
-    float fr =
-        wheelSpeed_get(WHEEL_FR);
-
-    float rl =
-        wheelSpeed_get(WHEEL_RL);
-
-    float rr =
-        wheelSpeed_get(WHEEL_RR);
-
-
-    /*
-     * Get IMU data.
-     */
-
-    AccelValues accel =
-        imu_get_accel();
-
-    GyroValues gyro =
-        imu_get_gyro();
-
-
-    /*
-     * Format data as CSV.
-     *
-     * FL,FR,RL,RR,ax,ay,az,gx,gy,gz
-     */
-
-    char buffer[256];
-
-    int length = snprintf(
-        buffer,
-        sizeof(buffer),
-
-        "%.4f,%.4f,%.4f,%.4f,"
-        "%.4f,%.4f,%.4f,"
-        "%.4f,%.4f,%.4f",
-
-        fl,
-        fr,
-        rl,
-        rr,
-
-        accel.ax,
-        accel.ay,
-        accel.az,
-
-        gyro.gx,
-        gyro.gy,
-        gyro.gz
+    int rc = ble_gatts_notify_custom(
+        current_conn_handle,
+        sensor_val_handle,
+        NULL
     );
-
-
-    if (length <= 0)
-    {
-        return;
-    }
-
-
-    /*
-     * Convert data into a NimBLE mbuf.
-     */
-
-    struct os_mbuf *om =
-        ble_hs_mbuf_from_flat(
-            buffer,
-            length
-        );
-
-    if (om == NULL)
-    {
-        ESP_LOGW(
-            TAG,
-            "Failed to allocate BLE mbuf"
-        );
-
-        return;
-    }
-
-
-    /*
-     * Send notification.
-     */
-
-    int rc =
-        ble_gatts_notify_custom(
-            connection_handle,
-            characteristic_handle,
-            om
-        );
 
     if (rc != 0)
     {
-        ESP_LOGW(
+        ESP_LOGE(
             TAG,
-            "BLE notification failed: %d",
+            "ble_gatts_notify_custom failed: %d",
             rc
         );
+
+        return false;
     }
+
+    return true;
+}
+
+/* ============================================================
+ * Existing interface
+ * ============================================================ */
+
+bool writeSpeed(void)
+{
+    return bluetooth_get_move_command();
 }

@@ -18,6 +18,9 @@
 #define LPF_ALPHA               0.1f
 #define CALIBRATION_SAMPLES     1000
 
+#define AX_SCALE 0.000061f;
+#define GY_SCALE 0.00875f;
+
 static const char *TAG = "IMU";
 
 static i2c_master_bus_handle_t bus_handle;
@@ -147,8 +150,8 @@ void imu_init(void)
         return;
     }
 
-    write_register(CTRL1_XL, 0b01010010);
-    write_register(CTRL2_G, 0b01010000);
+    write_register(CTRL1_XL, 0b01000010);
+    write_register(CTRL2_G, 0b01000000);
 }
 
 void imu_update(void)
@@ -167,13 +170,13 @@ void imu_update(void)
     int16_t gy_raw = (int16_t)((gyro_data[3] << 8) | gyro_data[2]);
     int16_t gz_raw = (int16_t)((gyro_data[5] << 8) | gyro_data[4]);
 
-    float ax = ax_raw * 0.000061f;
-    float ay = ay_raw * 0.000061f;
-    float az = az_raw * 0.000061f;
+    float ax = ax_raw * AX_SCALE;
+    float ay = ay_raw * AX_SCALE;
+    float az = az_raw * AX_SCALE;
 
-    float gx = gx_raw * 0.00875f;
-    float gy = gy_raw * 0.00875f;
-    float gz = gz_raw * 0.00875f;
+    float gx = gx_raw * GY_SCALE;
+    float gy = gy_raw * GY_SCALE;
+    float gz = gz_raw * GY_SCALE;
 
     if (sample_count < CALIBRATION_SAMPLES)
     {
@@ -196,6 +199,7 @@ void imu_update(void)
     low_pass_filter(gx, &gyro_filtered.gx);
     low_pass_filter(gy, &gyro_filtered.gy);
     low_pass_filter(gz, &gyro_filtered.gz);
+    // printf("%.2f, %.2f, %.2f\n", ax, ay, az);
 }
 
 AccelValues imu_get_accel(void)

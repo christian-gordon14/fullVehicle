@@ -1,6 +1,7 @@
 #include "controller.h"
 #include "wheelSpeeds.h"
 #include "motorDriver.h"
+#include "bluetooth.h"
 #include <stdio.h>
 
 // ============================================================
@@ -56,13 +57,6 @@ static PID_params wheel_speed_pid[WHEEL_COUNT] = {
 // Public variables
 // ============================================================
 
-float wheel_speed_targets[WHEEL_COUNT] = {
-    [WHEEL_FL] = 13.f,
-    [WHEEL_FR] = 13.f,
-    [WHEEL_RL] = 13.f,
-    [WHEEL_RR] = 13.f,
-};
-
 // ============================================================
 // Private functions
 // ============================================================
@@ -101,12 +95,14 @@ float wheelFeedForward(float target_wheel_speed)
 
 void updateControl(void)
 {
+    float target = writeSpeed() ? 13.f : 0.f;
+    // printf("target = %.2f, writeSpeed = %d\n", target, writeSpeed());
     for(Wheel wheel = 0; wheel < WHEEL_COUNT; wheel++)
     {
-        wheel_speed_pid[wheel].target = wheel_speed_targets[wheel];
+        wheel_speed_pid[wheel].target = target;
         float measurement = wheelSpeed_get(wheel);
         float pid_output = PIDController(&wheel_speed_pid[wheel], measurement);
-        float ff_output = wheelFeedForward(wheel_speed_targets[wheel]);
+        float ff_output = wheelFeedForward(target);
         float voltage = pid_output + ff_output;
         motorDriver_setVoltage(wheel, voltage);
     }

@@ -9,7 +9,8 @@
 #include "wheelSpeeds.h"
 #include "imu.h"
 #include "controller.h"
-#include "bluetooth.h"
+#include "bluetoothSend.h"
+#include "bluetoothReceive.h"
 // ============================================================
 // Configuration
 // ============================================================

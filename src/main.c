@@ -9,7 +9,6 @@
 void app_main(void)
 {
     // Initialize hardware
-    printf("++++++++++++++TEST++++++++++++++");
     initializeMotorsPWM();
     wheelSpeed_init();
     imu_init();
