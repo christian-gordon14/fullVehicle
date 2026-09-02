@@ -3,12 +3,16 @@
 
 #include <stdio.h>
 #include <stdint.h>
+#include <math.h>
 #include "driver/gpio.h"
 #include "driver/ledc.h"
+#include "esp_err.h"
+#include "esp_log.h"
 
 // ============================================================
 // Configuration
 // ============================================================
+static const char *TAG = "MOTOR_DRIVER";
 
 // H-bridge 1 (left wheels)
 // Front Motor
@@ -135,6 +139,12 @@ void motorDriver_setVoltage(Wheel wheel, float voltage)
         return;
     }
 
+    if (!isfinite(voltage))
+    {
+        ESP_LOGE(TAG, "Invalid motor voltage");
+        voltage = 0.0f;
+    }
+
     // Limit voltage
     if (voltage > MAX_VOLTAGE)
     {
@@ -151,18 +161,33 @@ void motorDriver_setVoltage(Wheel wheel, float voltage)
 
     const MotorPins *pins = &motorPins[wheel];
 
-    ESP_ERROR_CHECK(
-        ledc_set_duty(
-            LEDC_LOW_SPEED_MODE,
-            pins->pwm_channel,
-            duty
-        )
+    esp_err_t result = ledc_set_duty(
+        LEDC_LOW_SPEED_MODE,
+        pins->pwm_channel,
+        duty
     );
 
-    ESP_ERROR_CHECK(
-        ledc_update_duty(
-            LEDC_LOW_SPEED_MODE,
-            pins->pwm_channel
-        )
+    if (result != ESP_OK)
+    {
+        ESP_LOGE(
+            TAG,
+            "LEDC duty set failed: %s",
+            esp_err_to_name(result)
+        );
+        return;
+    }
+
+    result = ledc_update_duty(
+        LEDC_LOW_SPEED_MODE,
+        pins->pwm_channel
     );
+
+    if (result != ESP_OK)
+    {
+        ESP_LOGE(
+            TAG,
+            "LEDC duty update failed: %s",
+            esp_err_to_name(result)
+        );
+    }
 }

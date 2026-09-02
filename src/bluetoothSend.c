@@ -36,6 +36,12 @@ void bluetooth_send_set_connection(
     uint16_t conn_handle)
 {
     connection_handle = conn_handle;
+
+    ESP_LOGI(
+        TAG,
+        "Telemetry connection=%u",
+        conn_handle
+    );
 }
 
 void bluetooth_send_clear_connection(void)
@@ -50,12 +56,24 @@ void bluetooth_send_set_notification(
     bool enabled)
 {
     notifications_enabled = enabled;
+
+    ESP_LOGI(
+        TAG,
+        "Telemetry notifications=%s",
+        enabled ? "enabled" : "disabled"
+    );
 }
 
 void bluetooth_send_set_characteristic_handle(
     uint16_t handle)
 {
     characteristic_handle = handle;
+
+    ESP_LOGI(
+        TAG,
+        "Telemetry characteristic handle=%u",
+        handle
+    );
 }
 
 void bluetooth_send_sensor_data(void)
@@ -63,16 +81,19 @@ void bluetooth_send_sensor_data(void)
     if (connection_handle ==
         BLE_HS_CONN_HANDLE_NONE)
     {
+        ESP_LOGW(TAG, "Telemetry skipped: no BLE connection");
         return;
     }
 
     if (!notifications_enabled)
     {
+        ESP_LOGW(TAG, "Telemetry skipped: notifications disabled");
         return;
     }
 
     if (characteristic_handle == 0)
     {
+        ESP_LOGW(TAG, "Telemetry skipped: characteristic handle is zero");
         return;
     }
 

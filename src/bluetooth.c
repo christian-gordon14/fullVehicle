@@ -1,5 +1,6 @@
 #include "bluetooth.h"
 #include "bluetoothReceive.h"
+#include "bluetoothSend.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -13,6 +14,7 @@
 #include "host/ble_hs_id.h"
 #include "host/ble_gap.h"
 #include "host/ble_gatt.h"
+#include "os/os_mbuf.h"
 #include "services/gap/ble_svc_gap.h"
 #include "services/gatt/ble_svc_gatt.h"
 
@@ -292,6 +294,10 @@ static int ble_gap_event(
                 current_conn_handle =
                     event->connect.conn_handle;
 
+                bluetooth_send_set_connection(
+                    current_conn_handle
+                );
+
                 ESP_LOGI(
                     TAG,
                     "BLE connected, conn_handle=%u",
@@ -325,9 +331,22 @@ static int ble_gap_event(
             current_conn_handle =
                 BLE_HS_CONN_HANDLE_NONE;
 
+            bluetooth_send_clear_connection();
             bluetooth_receive_stop();
 
             ble_on_sync();
+
+            break;
+
+        case BLE_GAP_EVENT_SUBSCRIBE:
+
+            if (event->subscribe.attr_handle ==
+                sensor_val_handle)
+            {
+                bluetooth_send_set_notification(
+                    event->subscribe.cur_notify != 0
+                );
+            }
 
             break;
 
@@ -371,7 +390,52 @@ static void ble_on_sync(void)
     struct ble_hs_adv_fields rsp_fields;
     struct ble_gap_adv_params adv_params;
 
-    int rc = ble_hs_id_infer_auto(0, &ble_addr_type);
+    int rc = ble_gatts_find_chr(
+        &service_uuid.u,
+        &sensor_uuid.u,
+        NULL,
+        &sensor_val_handle
+    );
+
+    if (rc != 0)
+    {
+        ESP_LOGE(
+            TAG,
+            "Could not find sensor characteristic handle: %d",
+            rc
+        );
+        return;
+    }
+
+    rc = ble_gatts_find_chr(
+        &service_uuid.u,
+        &command_uuid.u,
+        NULL,
+        &command_val_handle
+    );
+
+    if (rc != 0)
+    {
+        ESP_LOGE(
+            TAG,
+            "Could not find command characteristic handle: %d",
+            rc
+        );
+        return;
+    }
+
+    ESP_LOGI(
+        TAG,
+        "GATT handles: sensor=%u command=%u",
+        sensor_val_handle,
+        command_val_handle
+    );
+
+    bluetooth_send_set_characteristic_handle(
+        sensor_val_handle
+    );
+
+    rc = ble_hs_id_infer_auto(0, &ble_addr_type);
     if (rc != 0) {
         ESP_LOGE(TAG, "ble_hs_id_infer_auto failed: %d", rc);
         return;
@@ -457,6 +521,8 @@ static void ble_host_task(void *param)
 
 void bluetooth_init(void)
 {
+    bluetooth_send_init();
+
     ESP_LOGI(
         TAG,
         "Initializing BLE"
@@ -547,6 +613,21 @@ void bluetooth_init(void)
         command_val_handle
     );
 
+    if (sensor_val_handle == 0 ||
+        command_val_handle == 0)
+    {
+        ESP_LOGE(
+            TAG,
+            "Invalid GATT handles: sensor=%u command=%u",
+            sensor_val_handle,
+            command_val_handle
+        );
+    }
+
+    bluetooth_send_set_characteristic_handle(
+        sensor_val_handle
+    );
+
     nimble_port_freertos_init(
         ble_host_task
     );
@@ -606,10 +687,22 @@ bool bluetooth_notify_sensor(
         return false;
     }
 
+    struct os_mbuf *om =
+        ble_hs_mbuf_from_flat(data, length);
+
+    if (om == NULL)
+    {
+        ESP_LOGE(
+            TAG,
+            "Failed to allocate sensor notification buffer"
+        );
+        return false;
+    }
+
     int rc = ble_gatts_notify_custom(
         current_conn_handle,
         sensor_val_handle,
-        NULL
+        om
     );
 
     if (rc != 0)
