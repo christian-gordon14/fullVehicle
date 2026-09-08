@@ -12,6 +12,8 @@
 
 #include "wheelSpeeds.h"
 #include "imu.h"
+#include "controller.h"
+#include "vehicleDynamics.h"
 
 static const char *TAG = "BLE_TX";
 
@@ -115,6 +117,13 @@ void bluetooth_send_sensor_data(void)
     GyroValues gyro =
         imu_get_gyro();
 
+    VehicleStates vehicleStates = imu_get_states();
+
+    Controller_outputs controller_outputs = updateControl();
+
+    WheelStruct wheelForces = getWheelForces();
+    WheelStruct slipRatios = getSlipRatios();
+
     char buffer[256];
 
     int length = snprintf(
@@ -122,17 +131,48 @@ void bluetooth_send_sensor_data(void)
         sizeof(buffer),
         "%.4f,%.4f,%.4f,%.4f,"
         "%.4f,%.4f,%.4f,"
-        "%.4f,%.4f,%.4f",
+        "%.4f,%.4f,%.4f,"
+        "%.4f, %.4f,"
+        "%.4f,"
+        "%.4f,%.4f,%.4f,%.4f,"
+        "%.4f,"
+        "%.4f,%.4f,%.4f,%.4f,"
+        "%.4f,%.4f,%.4f,%.4f",
+
         fl,
         fr,
         rl,
         rr,
+        
         accel.ax,
         accel.ay,
         accel.az,
+
         gyro.gx,
         gyro.gy,
-        gyro.gz
+        gyro.gz,
+
+        vehicleStates.heading,
+        vehicleStates.xVelocity,
+
+        controller_outputs.feedforward,
+        
+        controller_outputs.PID_wheel_speed_FL,
+        controller_outputs.PID_wheel_speed_FR,
+        controller_outputs.PID_wheel_speed_RL,
+        controller_outputs.PID_wheel_speed_RR,
+        
+        controller_outputs.PID_heading,
+
+        wheelForces.WHEEL_FL,
+        wheelForces.WHEEL_FR,
+        wheelForces.WHEEL_RL,
+        wheelForces.WHEEL_RR,
+
+        slipRatios.WHEEL_FL,
+        slipRatios.WHEEL_FR,
+        slipRatios.WHEEL_RL,
+        slipRatios.WHEEL_RR
     );
 
     if (length <= 0)

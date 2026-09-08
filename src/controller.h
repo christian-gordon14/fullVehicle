@@ -15,7 +15,16 @@ typedef struct{
     float min;
 } PID_params;
 
+typedef struct {
+    float feedforward;
+    float PID_wheel_speed_FL;
+    float PID_wheel_speed_FR;
+    float PID_wheel_speed_RL;
+    float PID_wheel_speed_RR;
+    float PID_heading;
+} Controller_outputs;
+
 float PIDController(PID_params *controller, float measurement);
 float wheelFeedForward(float target_wheel_speed);
-void updateControl(void);
+Controller_outputs updateControl(void);
 #endif

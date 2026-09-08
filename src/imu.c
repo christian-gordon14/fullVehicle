@@ -2,10 +2,15 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
+#include <math.h>
 #include "esp_log.h"
 #include "esp_err.h"
 #include "driver/i2c_master.h"
 #include "nvs.h"
+
+// ============================================================
+// Configuration
+// ============================================================
 
 #define SCL_PIN                 22
 #define SDA_PIN                 21
@@ -25,6 +30,13 @@
 #define AX_SCALE 0.000061f
 #define GY_SCALE 0.00875f
 
+#define DT 0.001f
+#define PI 3.14159f
+
+// ============================================================
+// Private variables
+// ============================================================
+
 static const char *TAG = "IMU";
 
 static i2c_master_bus_handle_t bus_handle;
@@ -33,6 +45,7 @@ static bool imu_ready = false;
 
 static AccelValues accel_filtered = {0};
 static GyroValues gyro_filtered = {0};
+static VehicleStates vehicleStates = {0};
 
 static float ax_bias = 0.0f;
 static float ay_bias = 0.0f;
@@ -49,7 +62,7 @@ static float gy_total = 0.0f;
 static float gz_total = 0.0f;
 
 static int sample_count = 0;
-static bool recalibrate_IMU = true;
+static bool recalibrate_IMU = false;
 static bool calibration_saved = false;
 static bool calibration_complete = false;
 
@@ -63,6 +76,15 @@ typedef struct
     float gz;
 } ImuCalibration;
 
+// ============================================================
+// Private variables
+// ============================================================
+float yaw_heading = 0.f;
+
+// ============================================================
+// Function definitions
+// ============================================================
+
 static void init_i2c(void);
 static esp_err_t add_imu_device(uint16_t address);
 static void write_register(uint8_t reg, uint8_t value);
@@ -72,6 +94,10 @@ static void calibrate(float ax, float ay, float az, float gx, float gy, float gz
 static bool load_calibration(void);
 static bool save_calibration(void);
 static void scan_i2c(void);
+
+// ============================================================
+// Private functions
+// ============================================================
 
 static void scan_i2c(void)
 {
@@ -282,6 +308,10 @@ static void calibrate(float ax, float ay, float az, float gx, float gy, float gz
     }
 }
 
+// ============================================================
+// Public functions
+// ============================================================
+
 void imu_init(void)
 {
     imu_ready = false;
@@ -307,8 +337,8 @@ void imu_init(void)
         return;
     }
 
-    write_register(CTRL1_XL, 0b01000010);
-    write_register(CTRL2_G, 0b01000000);
+    write_register(CTRL1_XL, 0b10000010);
+    write_register(CTRL2_G, 0b10000000);
 
     if (!recalibrate_IMU && load_calibration())
     {
@@ -386,14 +416,28 @@ void imu_update(void)
     gy -= gy_bias;
     gz -= gz_bias;
 
-    low_pass_filter(ax, &accel_filtered.ax);
-    low_pass_filter(ay, &accel_filtered.ay);
-    low_pass_filter(az, &accel_filtered.az);
-
     low_pass_filter(gx, &gyro_filtered.gx);
     low_pass_filter(gy, &gyro_filtered.gy);
     low_pass_filter(gz, &gyro_filtered.gz);
+
+    vehicleStates.pitch = vehicleStates.pitch + DT * gyro_filtered.gx;
+    float ax_gravity = sinf(vehicleStates.pitch * PI / 180.0f);
+
+    low_pass_filter(ax - ax_gravity, &accel_filtered.ax);
+    low_pass_filter(ay, &accel_filtered.ay);
+    low_pass_filter(az, &accel_filtered.az);
+
+
     // printf("%.2f, %.2f, %.2f\n", ax, ay, az);
+
+    // ACCEL CONVERSION TO VELOCITY
+    vehicleStates.xVelocity += DT * accel_filtered.ax * 9.81f;
+    vehicleStates.yVelocity += DT * accel_filtered.ay * 9.81f;
+    // VELOCITY CONVERSION TO POSITION
+    vehicleStates.xPosition += DT * (vehicleStates.xVelocity * cosf(vehicleStates.heading * PI / (180.f)) - vehicleStates.yVelocity * sinf(vehicleStates.heading * PI / (180.f)));
+    vehicleStates.yPosition += DT * (vehicleStates.xVelocity * sinf(vehicleStates.heading * PI / (180.f)) + vehicleStates.yVelocity * cosf(vehicleStates.heading * PI / (180.f)));
+    // GYRO TO HEADING
+    vehicleStates.heading += DT * gyro_filtered.gz;
 }
 
 AccelValues imu_get_accel(void)
@@ -404,4 +448,9 @@ AccelValues imu_get_accel(void)
 GyroValues imu_get_gyro(void)
 {
     return gyro_filtered;
+}
+
+VehicleStates imu_get_states(void)
+{
+    return vehicleStates;
 }
