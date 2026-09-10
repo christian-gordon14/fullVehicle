@@ -29,6 +29,7 @@
 #define LPF_ALPHA_GYRO             0.3f
 #define POSE_CALIBRATION_SAMPLES  3000
 #define GYRO_CALIBRATION_SAMPLES   3000
+#define GYRO_WINDOW_NORM 0.03f
 
 #define AX_SCALE 0.000061f
 #define GY_SCALE 0.00875f
@@ -73,6 +74,11 @@ static float gz_total;
 static float gx_bias;
 static float gy_bias;
 static float gz_bias;
+
+static float gyro_transient_window_four = 0.f;
+static float gyro_transient_window_three = 0.f;
+static float gyro_transient_window_two = 0.f;
+static float gyro_transient_window_one = 0.f;
 
 typedef struct
 {
@@ -341,7 +347,25 @@ void imu_update(void)
     float gyro_pitch = vehicleStates.pitch + dt * gyro_filtered.gy;
     float gyro_roll = vehicleStates.roll + dt * gyro_filtered.gx;
 
-    vehicleStates.pitch = 0.9993f * gyro_pitch + 0.0007 * pitch_accel;
+
+    // if gyro_pitch
+    gyro_transient_window_one = gyro_transient_window_two;
+    gyro_transient_window_two = gyro_transient_window_three;
+    gyro_transient_window_three = gyro_transient_window_four;
+    gyro_transient_window_four = gyro_filtered.gy;
+
+    // sum of squares
+    float total_window = gyro_transient_window_four * gyro_transient_window_four * gyro_transient_window_three * gyro_transient_window_three + 
+                    gyro_transient_window_two * gyro_transient_window_two + gyro_transient_window_one * gyro_transient_window_one;
+
+    if (total_window > GYRO_WINDOW_NORM)
+    {
+    vehicleStates.pitch = gyro_pitch;
+    }
+    else
+    {
+      vehicleStates.pitch = 0.98f * gyro_pitch + 0.02 * pitch_accel;  
+    }
     vehicleStates.roll = gyro_roll;
     
     float ax_gravity = sinf(vehicleStates.pitch * PI / 180.f);
@@ -354,6 +378,11 @@ void imu_update(void)
 
     // ACCEL CONVERSION TO VELOCITY
     vehicleStates.xVelocity += dt * accel_gravity_compensated.ax * 9.81f;
+    if (vehicleStates.xVelocity <= 0)
+    {
+        vehicleStates.xVelocity = 0;
+    }
+
     vehicleStates.yVelocity += dt * accel_gravity_compensated.ay * 9.81f;
 
     // VELOCITY CONVERSION TO POSITION
