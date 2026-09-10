@@ -5,8 +5,6 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-#include "esp_log.h"
-
 #include "host/ble_hs.h"
 #include "host/ble_gatt.h"
 
@@ -15,108 +13,56 @@
 #include "controller.h"
 #include "vehicleDynamics.h"
 
-static const char *TAG = "BLE_TX";
-
-static uint16_t connection_handle =
-    BLE_HS_CONN_HANDLE_NONE;
-
+static uint16_t connection_handle = BLE_HS_CONN_HANDLE_NONE;
 static uint16_t characteristic_handle = 0;
-
 static bool notifications_enabled = false;
 
 void bluetooth_send_init(void)
 {
-    connection_handle =
-        BLE_HS_CONN_HANDLE_NONE;
-
+    connection_handle = BLE_HS_CONN_HANDLE_NONE;
     characteristic_handle = 0;
-
     notifications_enabled = false;
 }
 
-void bluetooth_send_set_connection(
-    uint16_t conn_handle)
+void bluetooth_send_set_connection(uint16_t conn_handle)
 {
     connection_handle = conn_handle;
-
-    ESP_LOGI(
-        TAG,
-        "Telemetry connection=%u",
-        conn_handle
-    );
 }
 
 void bluetooth_send_clear_connection(void)
 {
-    connection_handle =
-        BLE_HS_CONN_HANDLE_NONE;
-
+    connection_handle = BLE_HS_CONN_HANDLE_NONE;
     notifications_enabled = false;
 }
 
-void bluetooth_send_set_notification(
-    bool enabled)
+void bluetooth_send_set_notification(bool enabled)
 {
     notifications_enabled = enabled;
-
-    ESP_LOGI(
-        TAG,
-        "Telemetry notifications=%s",
-        enabled ? "enabled" : "disabled"
-    );
 }
 
-void bluetooth_send_set_characteristic_handle(
-    uint16_t handle)
+void bluetooth_send_set_characteristic_handle(uint16_t handle)
 {
     characteristic_handle = handle;
-
-    ESP_LOGI(
-        TAG,
-        "Telemetry characteristic handle=%u",
-        handle
-    );
 }
 
 void bluetooth_send_sensor_data(void)
 {
-    if (connection_handle ==
-        BLE_HS_CONN_HANDLE_NONE)
-    {
-        ESP_LOGW(TAG, "Telemetry skipped: no BLE connection");
+    if (connection_handle == BLE_HS_CONN_HANDLE_NONE)
         return;
-    }
 
     if (!notifications_enabled)
-    {
-        ESP_LOGW(TAG, "Telemetry skipped: notifications disabled");
         return;
-    }
 
     if (characteristic_handle == 0)
-    {
-        ESP_LOGW(TAG, "Telemetry skipped: characteristic handle is zero");
         return;
-    }
 
-    float fl =
-        wheelSpeed_get(WHEEL_FL);
+    float fl = wheelSpeed_get(WHEEL_FL);
+    float fr = wheelSpeed_get(WHEEL_FR);
+    float rl = wheelSpeed_get(WHEEL_RL);
+    float rr = wheelSpeed_get(WHEEL_RR);
 
-    float fr =
-        wheelSpeed_get(WHEEL_FR);
-
-    float rl =
-        wheelSpeed_get(WHEEL_RL);
-
-    float rr =
-        wheelSpeed_get(WHEEL_RR);
-
-    AccelValues accel =
-        imu_get_accel();
-
-    GyroValues gyro =
-        imu_get_gyro();
-
+    AccelValues accel = imu_get_accel();
+    GyroValues gyro = imu_get_gyro();
     VehicleStates vehicleStates = imu_get_states();
 
     Controller_outputs controller_outputs = updateControl();
@@ -132,18 +78,15 @@ void bluetooth_send_sensor_data(void)
         "%.4f,%.4f,%.4f,%.4f,"
         "%.4f,%.4f,%.4f,"
         "%.4f,%.4f,%.4f,"
-        "%.4f, %.4f,"
+        "%.4f, %.4f, %.4f,"
         "%.4f,"
-        "%.4f,%.4f,%.4f,%.4f,"
-        "%.4f,"
-        "%.4f,%.4f,%.4f,%.4f,"
         "%.4f,%.4f,%.4f,%.4f",
+        // "%.4f,"
+        // "%.4f,%.4f,%.4f,%.4f,"
+        // "%.4f,%.4f,%.4f,%.4f",
 
-        fl,
-        fr,
-        rl,
-        rr,
-        
+        fl, fr, rl, rr,
+
         accel.ax,
         accel.ay,
         accel.az,
@@ -154,61 +97,39 @@ void bluetooth_send_sensor_data(void)
 
         vehicleStates.heading,
         vehicleStates.xVelocity,
+        vehicleStates.pitch,
 
         controller_outputs.feedforward,
-        
+
         controller_outputs.PID_wheel_speed_FL,
         controller_outputs.PID_wheel_speed_FR,
         controller_outputs.PID_wheel_speed_RL,
-        controller_outputs.PID_wheel_speed_RR,
-        
-        controller_outputs.PID_heading,
+        controller_outputs.PID_wheel_speed_RR
 
-        wheelForces.WHEEL_FL,
-        wheelForces.WHEEL_FR,
-        wheelForces.WHEEL_RL,
-        wheelForces.WHEEL_RR,
+        // controller_outputs.PID_heading,
 
-        slipRatios.WHEEL_FL,
-        slipRatios.WHEEL_FR,
-        slipRatios.WHEEL_RL,
-        slipRatios.WHEEL_RR
+        // wheelForces.WHEEL_FL,
+        // wheelForces.WHEEL_FR,
+        // wheelForces.WHEEL_RL,
+        // wheelForces.WHEEL_RR,
+
+        // slipRatios.WHEEL_FL,
+        // slipRatios.WHEEL_FR,
+        // slipRatios.WHEEL_RL,
+        // slipRatios.WHEEL_RR
     );
 
     if (length <= 0)
-    {
         return;
-    }
 
-    struct os_mbuf *om =
-        ble_hs_mbuf_from_flat(
-            buffer,
-            length
-        );
+    struct os_mbuf *om = ble_hs_mbuf_from_flat(buffer, length);
 
     if (om == NULL)
-    {
-        ESP_LOGW(
-            TAG,
-            "Failed to allocate BLE mbuf"
-        );
-
         return;
-    }
 
-    int rc =
-        ble_gatts_notify_custom(
-            connection_handle,
-            characteristic_handle,
-            om
-        );
-
-    if (rc != 0)
-    {
-        ESP_LOGW(
-            TAG,
-            "Notification failed: %d",
-            rc
-        );
-    }
+    ble_gatts_notify_custom(
+        connection_handle,
+        characteristic_handle,
+        om
+    );
 }

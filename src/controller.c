@@ -22,7 +22,7 @@
 #define KI_WHEEL_SPEED 0.88f
 #define KD_WHEEL_SPEED 0.0f
 
-#define KP_STABILITY 5.f
+#define KP_STABILITY 1.f
 #define MAX_YAW_OUTPUT 3.f
 #define MIN_YAW_OUTPUT -3.f
 #define TARGET_HEADING 0.0f

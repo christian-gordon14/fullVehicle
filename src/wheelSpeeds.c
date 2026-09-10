@@ -81,10 +81,10 @@ static const HallADCConfig hall_adc_config[WHEEL_COUNT] =
 static void initializeADC(void);
 static void read_hall_sensors(void);
 static void updateWheelSpeed(Wheel wheel);
-static void lowPassFilter(float *current_value, float *filtered_value);
+static void lowPassFilter(float *current_value, float *filtered_value, float LPF_ALPHA);
 
 
-static void lowPassFilter(float *current_value, float *filtered_value)
+static void lowPassFilter(float *current_value, float *filtered_value, float LPF_ALPHA)
 {
     *filtered_value = LPF_ALPHA * (*current_value) + (1.0f - LPF_ALPHA) * (*filtered_value);
 }
@@ -183,7 +183,7 @@ static void updateWheelSpeed(Wheel wheel)
     }
 
     // filtering the wheel speed
-    lowPassFilter(&ws->wheel_speed_measured, &ws->wheel_speed_filtered);
+    lowPassFilter(&ws->wheel_speed_measured, &ws->wheel_speed_filtered, LPF_ALPHA_WHEEL_SPEEDS);
     ws->previous_hall_value_raw = ws->hall_value_raw;
 }
 
