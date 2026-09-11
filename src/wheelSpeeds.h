@@ -11,8 +11,8 @@
 #define PI                  3.14159f
 #define HALL_THRESHOLD      1900
 #define TOTAL_MAGNETS       8
-#define MAX_MISSED_PULSES   2
-#define LPF_ALPHA_WHEEL_SPEEDS 0.3f
+#define MAX_MISSED_PULSES   1
+#define LPF_ALPHA_WHEEL_SPEEDS 0.1f
 
 typedef enum
 {

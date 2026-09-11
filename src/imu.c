@@ -37,7 +37,7 @@
 #define PI 3.14159f
 
 // calculated from the 6 positions
-#define AX_BIAS -0.00070508f
+#define AX_BIAS (-0.00070508f)
 #define AY_BIAS -0.03379302f
 #define AZ_BIAS 0.01673724f
 
@@ -79,6 +79,9 @@ static float gyro_transient_window_four = 0.f;
 static float gyro_transient_window_three = 0.f;
 static float gyro_transient_window_two = 0.f;
 static float gyro_transient_window_one = 0.f;
+static float gyro_total_window = 0;
+
+static float ax_gravity = 0.f;
 
 typedef struct
 {
@@ -338,9 +341,6 @@ void imu_update(void)
     low_pass_filter(ay, &accel_filtered.ay, LPF_ALPHA_XL);
     low_pass_filter(az, &accel_filtered.az, LPF_ALPHA_XL);
 
-    float accel_mag = sqrtf(accel_filtered.ax * accel_filtered.ax + accel_filtered.ay * accel_filtered.ay + accel_filtered.az * accel_filtered.az);
-    bool vehicle_stationary = ((fabsf(accel_mag - 1.f) < 0.05f) && (fabsf(accel_filtered.ax) < 0.01f));
-
     float pitch_accel = atan2f(accel_filtered.ax, sqrtf(accel_filtered.ay * accel_filtered.ay + accel_filtered.az * accel_filtered.az)) * 180.f / PI;
     float roll_accel = atan2f(accel_filtered.ay, sqrtf(accel_filtered.ax * accel_filtered.ax + accel_filtered.az * accel_filtered.az)) * 180.f / PI;
 
@@ -355,20 +355,20 @@ void imu_update(void)
     gyro_transient_window_four = gyro_filtered.gy;
 
     // sum of squares
-    float total_window = gyro_transient_window_four * gyro_transient_window_four * gyro_transient_window_three * gyro_transient_window_three + 
+    gyro_total_window = gyro_transient_window_four * gyro_transient_window_four + gyro_transient_window_three * gyro_transient_window_three + 
                     gyro_transient_window_two * gyro_transient_window_two + gyro_transient_window_one * gyro_transient_window_one;
 
-    if (total_window > GYRO_WINDOW_NORM)
+    if (gyro_total_window > GYRO_WINDOW_NORM)
     {
-    vehicleStates.pitch = gyro_pitch;
+        vehicleStates.pitch = gyro_pitch;
     }
     else
     {
-      vehicleStates.pitch = 0.98f * gyro_pitch + 0.02 * pitch_accel;  
+        vehicleStates.pitch = 0.98f * gyro_pitch + 0.02 * pitch_accel;  
     }
     vehicleStates.roll = gyro_roll;
     
-    float ax_gravity = sinf(vehicleStates.pitch * PI / 180.f);
+    ax_gravity = sinf(vehicleStates.pitch * PI / 180.f);
     float ay_gravity = sinf(vehicleStates.roll * PI / 180.f) * cosf(vehicleStates.pitch * PI / 180.f);
     float az_gravity = cosf(vehicleStates.roll * PI / 180.f) * cosf(vehicleStates.pitch * PI / 180.f);
 
@@ -384,7 +384,6 @@ void imu_update(void)
     }
 
     vehicleStates.yVelocity += dt * accel_gravity_compensated.ay * 9.81f;
-
     // VELOCITY CONVERSION TO POSITION
     vehicleStates.xPosition += dt * (vehicleStates.xVelocity * cosf(vehicleStates.heading * PI / 180.f)
                                    - vehicleStates.yVelocity * sinf(vehicleStates.heading * PI / 180.f));
@@ -394,8 +393,8 @@ void imu_update(void)
 
     // GYRO TO HEADING
     vehicleStates.heading += dt * gyro_filtered.gz;
-
 }
+
 AccelValues imu_get_accel(void)
 {
     return accel_gravity_compensated;
@@ -409,4 +408,9 @@ GyroValues imu_get_gyro(void)
 VehicleStates imu_get_states(void)
 {
     return vehicleStates;
+}
+
+float imu_get_accel_terms(void)
+{
+    return ax_gravity;
 }
