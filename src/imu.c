@@ -36,6 +36,8 @@
 
 #define PI 3.14159f
 
+#define VEHICLE_MASS 1.5f
+
 // calculated from the 6 positions
 #define AX_BIAS (-0.00070508f)
 #define AY_BIAS -0.03379302f
@@ -80,8 +82,6 @@ static float gyro_transient_window_three = 0.f;
 static float gyro_transient_window_two = 0.f;
 static float gyro_transient_window_one = 0.f;
 static float gyro_total_window = 0;
-
-static float ax_gravity = 0.f;
 
 typedef struct
 {
@@ -368,7 +368,7 @@ void imu_update(void)
     }
     vehicleStates.roll = gyro_roll;
     
-    ax_gravity = sinf(vehicleStates.pitch * PI / 180.f);
+    float ax_gravity = sinf(vehicleStates.pitch * PI / 180.f);
     float ay_gravity = sinf(vehicleStates.roll * PI / 180.f) * cosf(vehicleStates.pitch * PI / 180.f);
     float az_gravity = cosf(vehicleStates.roll * PI / 180.f) * cosf(vehicleStates.pitch * PI / 180.f);
 
@@ -377,7 +377,7 @@ void imu_update(void)
     accel_gravity_compensated.az = accel_filtered.az;
 
     // ACCEL CONVERSION TO VELOCITY
-    vehicleStates.xVelocity += dt * accel_gravity_compensated.ax * 9.81f;
+    vehicleStates.xVelocity += dt * accel_gravity_compensated.ax * 9.81f / VEHICLE_MASS;
     if (vehicleStates.xVelocity <= 0)
     {
         vehicleStates.xVelocity = 0;
@@ -408,9 +408,4 @@ GyroValues imu_get_gyro(void)
 VehicleStates imu_get_states(void)
 {
     return vehicleStates;
-}
-
-float imu_get_accel_terms(void)
-{
-    return ax_gravity;
 }

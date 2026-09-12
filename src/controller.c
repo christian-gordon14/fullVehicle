@@ -19,7 +19,7 @@
 // #define KI_WHEEL_SPEED 1.28f
 // tuning
 #define KP_WHEEL_SPEED 0.05f
-#define KI_WHEEL_SPEED 0.4f
+#define KI_WHEEL_SPEED 1.2f
 #define KD_WHEEL_SPEED 0.0f
 
 #define KP_STABILITY 1.f

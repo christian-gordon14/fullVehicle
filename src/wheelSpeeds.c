@@ -36,10 +36,6 @@ static const char *TAG = "WHEEL_SPEED";
 static adc_oneshot_unit_handle_t adc1_handle = NULL;
 static adc_oneshot_unit_handle_t adc2_handle = NULL;
 
-// ADC calibration handles
-static adc_cali_handle_t adc1_cali_handle = NULL;
-static adc_cali_handle_t adc2_cali_handle = NULL;
-
 
 // Wheel state
 // this is creating 4 instances that are empty
@@ -182,6 +178,10 @@ static void updateWheelSpeed(Wheel wheel)
         ws->new_measurement = true;
     }
 
+    if(ws->wheel_speed_measured > 30.0f)
+    {
+        ws->wheel_speed_measured = ws->wheel_speed_filtered;
+    }
     // filtering the wheel speed
     lowPassFilter(&ws->wheel_speed_measured, &ws->wheel_speed_filtered, LPF_ALPHA_WHEEL_SPEEDS);
     ws->previous_hall_value_raw = ws->hall_value_raw;

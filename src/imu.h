@@ -29,5 +29,4 @@ void imu_update(void);
 AccelValues imu_get_accel(void);
 GyroValues imu_get_gyro(void);
 VehicleStates imu_get_states(void);
-float imu_get_accel_terms(void);
 #endif

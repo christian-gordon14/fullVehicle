@@ -69,7 +69,6 @@ void bluetooth_send_sensor_data(void)
 
     WheelStruct wheelForces = getWheelForces();
     WheelStruct slipRatios = getSlipRatios();
-    float ax_gravity = imu_get_accel_terms();
 
     char buffer[256];
 
@@ -81,8 +80,8 @@ void bluetooth_send_sensor_data(void)
         "%.4f,%.4f,%.4f,"
         "%.4f, %.4f, %.4f,"
         "%.4f,"
-        "%.4f,%.4f,%.4f,%.4f,"
-        "%.4f",
+        "%.4f,%.4f,%.4f,%.4f",
+        // "%.4f",
         // "%.4f,%.4f,%.4f,%.4f,"
         // "%.4f,%.4f,%.4f,%.4f",
 
@@ -106,8 +105,7 @@ void bluetooth_send_sensor_data(void)
         controller_outputs.PID_wheel_speed_FL,
         controller_outputs.PID_wheel_speed_FR,
         controller_outputs.PID_wheel_speed_RL,
-        controller_outputs.PID_wheel_speed_RR,
-        ax_gravity
+        controller_outputs.PID_wheel_speed_RR
 
         // controller_outputs.PID_heading,
 
