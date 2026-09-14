@@ -12,6 +12,7 @@
 #include "imu.h"
 #include "controller.h"
 #include "vehicleDynamics.h"
+#include "sharedFunctions.h"
 
 static uint16_t connection_handle = BLE_HS_CONN_HANDLE_NONE;
 static uint16_t characteristic_handle = 0;
@@ -70,6 +71,8 @@ void bluetooth_send_sensor_data(void)
     WheelStruct wheelForces = getWheelForces();
     WheelStruct slipRatios = getSlipRatios();
 
+    float velocity_estimate_KF = get_vehicle_velocity_estimate_KF();
+
     char buffer[256];
 
     int length = snprintf(
@@ -80,8 +83,8 @@ void bluetooth_send_sensor_data(void)
         "%.4f,%.4f,%.4f,"
         "%.4f, %.4f, %.4f,"
         "%.4f,"
-        "%.4f,%.4f,%.4f,%.4f",
-        // "%.4f",
+        "%.4f,%.4f,%.4f,%.4f,"
+        "%.4f",
         // "%.4f,%.4f,%.4f,%.4f,"
         // "%.4f,%.4f,%.4f,%.4f",
 
@@ -105,7 +108,9 @@ void bluetooth_send_sensor_data(void)
         controller_outputs.PID_wheel_speed_FL,
         controller_outputs.PID_wheel_speed_FR,
         controller_outputs.PID_wheel_speed_RL,
-        controller_outputs.PID_wheel_speed_RR
+        controller_outputs.PID_wheel_speed_RR,
+
+        velocity_estimate_KF
 
         // controller_outputs.PID_heading,
 

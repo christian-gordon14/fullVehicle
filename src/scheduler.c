@@ -11,6 +11,7 @@
 #include "controller.h"
 #include "bluetoothSend.h"
 #include "bluetoothReceive.h"
+#include "sharedFunctions.h"
 // ============================================================
 // Configuration
 // ============================================================
@@ -68,14 +69,25 @@ static void blueToothTask(void *pvParameters)
         vTaskDelayUntil(&lastWakeTime, pdMS_TO_TICKS(20));
     }
 }
+
+static void vehicleVelocityEstimationTask(void *pvParameters)
+{
+    TickType_t lastWakeTime = xTaskGetTickCount();
+    while(1)
+    {
+        kalmanFilter();
+        vTaskDelayUntil(&lastWakeTime, pdMS_TO_TICKS(1));
+    }
+}
 // ============================================================
 // Public functions
 // ============================================================
 
 void scheduler_start(void)
 {
-    xTaskCreate(imuTask, "IMU", 4096, NULL, 6, NULL);
-    xTaskCreate(wheelSpeedSensorsTask, "Wheel Speed", 4096, NULL, 5, NULL);
+    xTaskCreate(imuTask, "IMU", 4096, NULL, 7, NULL);
+    xTaskCreate(wheelSpeedSensorsTask, "Wheel Speed", 4096, NULL, 7, NULL);
+    xTaskCreate(vehicleVelocityEstimationTask, "Velocity Estimate", 4096, NULL, 6, NULL);
     xTaskCreatePinnedToCore(controllerTask, "Controller", 4096, NULL, 4, NULL, 1);
     xTaskCreate(blueToothTask, "Bluetooth", 4096, NULL, 2, NULL);
     printf("Tasks created\n");

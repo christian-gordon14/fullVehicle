@@ -45,5 +45,6 @@ void wheelSpeed_init(void);
 void wheelSpeed_update(void);
 float wheelSpeed_get(Wheel wheel);
 bool wheelSpeed_newMeasurement(Wheel wheel);
+float get_middle_wheel_speeds_average(void);
 
 #endif

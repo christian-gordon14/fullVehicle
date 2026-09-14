@@ -11,9 +11,6 @@
 #include "esp_adc/adc_cali.h"
 #include "esp_adc/adc_cali_scheme.h"
 
-
-
-
 // ============================================================
 // Configuration
 // ============================================================
@@ -222,4 +219,19 @@ bool wheelSpeed_newMeasurement(Wheel wheel)
         return false;
     }
     return wheel_speeds[wheel].new_measurement;
+}
+
+float get_middle_wheel_speeds_average(void)
+{
+    float sum = 0.f;
+    float min = FLT_MAX;
+    float max = -FLT_MAX;
+    for(Wheel wheel = 0; wheel < WHEEL_COUNT; wheel++)
+    {
+        float wheel_speed = wheelSpeed_get(wheel);
+        sum += wheel_speed;
+        if (wheel_speed < min) min = wheel_speed;
+        if (wheel_speed > max) max = wheel_speed;
+    }
+    return ((sum - max - min) / 2.f);
 }

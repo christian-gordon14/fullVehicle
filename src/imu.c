@@ -94,6 +94,10 @@ typedef struct
 } ImuCalibration;
 
 // ============================================================
+// Public variables
+// ============================================================
+static float time_elapsed = 0.001f;
+// ============================================================
 // Private variables
 // ============================================================
 
@@ -255,11 +259,11 @@ void imu_update(void)
     // TIMING
     static int64_t last_time = 0;
     int64_t start_time = esp_timer_get_time();
-    float dt = 0.001f;
+    
 
     if (last_time != 0)
     {
-        dt = (start_time - last_time) * 1e-6f; 
+        time_elapsed = (start_time - last_time) * 1e-6f; 
     }
     
     last_time = start_time;
@@ -344,8 +348,8 @@ void imu_update(void)
     float pitch_accel = atan2f(accel_filtered.ax, sqrtf(accel_filtered.ay * accel_filtered.ay + accel_filtered.az * accel_filtered.az)) * 180.f / PI;
     float roll_accel = atan2f(accel_filtered.ay, sqrtf(accel_filtered.ax * accel_filtered.ax + accel_filtered.az * accel_filtered.az)) * 180.f / PI;
 
-    float gyro_pitch = vehicleStates.pitch + dt * gyro_filtered.gy;
-    float gyro_roll = vehicleStates.roll + dt * gyro_filtered.gx;
+    float gyro_pitch = vehicleStates.pitch + time_elapsed * gyro_filtered.gy;
+    float gyro_roll = vehicleStates.roll + time_elapsed * gyro_filtered.gx;
 
 
     // if gyro_pitch
@@ -377,22 +381,22 @@ void imu_update(void)
     accel_gravity_compensated.az = accel_filtered.az;
 
     // ACCEL CONVERSION TO VELOCITY
-    vehicleStates.xVelocity += dt * accel_gravity_compensated.ax * 9.81f / VEHICLE_MASS;
+    vehicleStates.xVelocity += time_elapsed * accel_gravity_compensated.ax * 9.81f / VEHICLE_MASS;
     if (vehicleStates.xVelocity <= 0)
     {
         vehicleStates.xVelocity = 0;
     }
 
-    vehicleStates.yVelocity += dt * accel_gravity_compensated.ay * 9.81f;
+    vehicleStates.yVelocity += time_elapsed * accel_gravity_compensated.ay * 9.81f;
     // VELOCITY CONVERSION TO POSITION
-    vehicleStates.xPosition += dt * (vehicleStates.xVelocity * cosf(vehicleStates.heading * PI / 180.f)
+    vehicleStates.xPosition += time_elapsed * (vehicleStates.xVelocity * cosf(vehicleStates.heading * PI / 180.f)
                                    - vehicleStates.yVelocity * sinf(vehicleStates.heading * PI / 180.f));
 
-    vehicleStates.yPosition += dt * (vehicleStates.xVelocity * sinf(vehicleStates.heading * PI / 180.f)
+    vehicleStates.yPosition += time_elapsed * (vehicleStates.xVelocity * sinf(vehicleStates.heading * PI / 180.f)
                                    + vehicleStates.yVelocity * cosf(vehicleStates.heading * PI / 180.f));
 
     // GYRO TO HEADING
-    vehicleStates.heading += dt * gyro_filtered.gz;
+    vehicleStates.heading += time_elapsed * gyro_filtered.gz;
 }
 
 AccelValues imu_get_accel(void)
@@ -408,4 +412,9 @@ GyroValues imu_get_gyro(void)
 VehicleStates imu_get_states(void)
 {
     return vehicleStates;
+}
+
+float imu_get_execution_time(void)
+{
+    return time_elapsed;
 }
