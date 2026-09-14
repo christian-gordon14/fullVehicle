@@ -14,12 +14,13 @@
 #define DAMPING 0.001f
 #define KM 0.275f
 #define KN 0.2540f
+#define VEHICLE_FRICTION 0.3f
 
 // #define KP_WHEEL_SPEED 0.8f
 // #define KI_WHEEL_SPEED 1.28f
 // tuning
-#define KP_WHEEL_SPEED 0.05f
-#define KI_WHEEL_SPEED 1.2f
+#define KP_WHEEL_SPEED 0.01f
+#define KI_WHEEL_SPEED 4.3f
 #define KD_WHEEL_SPEED 0.0f
 
 #define KP_STABILITY 1.f
@@ -111,7 +112,7 @@ float PIDController(PID_params *controller, float measurement){
 
 float wheelFeedForward(float target_wheel_speed)
 {
-    return target_wheel_speed * (KN + (DAMPING * RESISTANCE_ohms) / KM);   
+    return target_wheel_speed * ((KN + (DAMPING * RESISTANCE_ohms) / KM) + VEHICLE_FRICTION);   
 }
 
 Controller_outputs updateControl(void)
