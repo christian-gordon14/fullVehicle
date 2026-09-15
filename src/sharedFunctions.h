@@ -11,9 +11,6 @@ typedef struct {
     float kalman_gain;
 } Kalman_Parameters;
 
-// #define Q_ACCEL 1.71603f
-// #define R_WHEEL_SPEEDS 0.07227f
-
 #define Q_ACCEL 1.71603f
 #define R_WHEEL_SPEEDS 0.07227f
 

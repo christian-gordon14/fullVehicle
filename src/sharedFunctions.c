@@ -3,6 +3,7 @@
 #include "imu.h"
 
 #include "esp_timer.h"
+#include "math.h"
 
 // ============================================================
 // Configuration
@@ -19,7 +20,6 @@ Vehicle_Estimates vehicle_Estimates = {0};
 Kalman_Parameters vehicle_Kalman_Parameters = {0};
 static float averaged_wheel_speed = 0.f;
 static AccelValues accelValues;
-
 // ============================================================
 // Public variables
 // ============================================================
@@ -49,16 +49,25 @@ void kalmanFilter(void)
     accelValues = imu_get_accel();
     averaged_wheel_speed = get_middle_wheel_speeds_average();
 
+    // changing kalman parameters based on the accel integrated vehicle speed
+    /*WANT TO USE MU ESTIMATE HERE (OR SLIP RATIO)*/
+
     // prediciton
     vehicle_Estimates.vehicle_speed_estimate += time_elapsed * accelValues.ax * 9.81f;
+    if (vehicle_Estimates.vehicle_speed_estimate < 0.f)
+    {
+        vehicle_Estimates.vehicle_speed_estimate = 0.f;
+    }  
     vehicle_Kalman_Parameters.error_covariance += Q_ACCEL;
-    
+
+    if (((fabsf(accelValues.ax) < 0.2f) && (fabsf(averaged_wheel_speed * WHEEL_RADIUS) > 0.1f)))
+    {    
     // measurement  update
     vehicle_Kalman_Parameters.innovation_covariance = vehicle_Kalman_Parameters.error_covariance + R_WHEEL_SPEEDS;
     vehicle_Kalman_Parameters.kalman_gain = vehicle_Kalman_Parameters.error_covariance / vehicle_Kalman_Parameters.innovation_covariance;
     vehicle_Estimates.vehicle_speed_estimate += vehicle_Kalman_Parameters.kalman_gain * (averaged_wheel_speed * WHEEL_RADIUS - vehicle_Estimates.vehicle_speed_estimate);
     vehicle_Kalman_Parameters.error_covariance -= vehicle_Kalman_Parameters.kalman_gain * vehicle_Kalman_Parameters.error_covariance;
-
+    }
 }
 
 float get_vehicle_velocity_estimate_KF(void)

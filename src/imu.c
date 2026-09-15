@@ -36,8 +36,6 @@
 
 #define PI 3.14159f
 
-#define VEHICLE_MASS 1.5f
-
 // calculated from the 6 positions
 #define AX_BIAS (-0.00070508f)
 #define AY_BIAS -0.03379302f
@@ -160,7 +158,7 @@ static esp_err_t add_imu_device(uint16_t address)
     {
         .dev_addr_length = I2C_ADDR_BIT_LEN_7,
         .device_address = address,
-        .scl_speed_hz = 400000,
+        .scl_speed_hz = 1000000,
     };
 
     return i2c_master_bus_add_device(
@@ -381,7 +379,7 @@ void imu_update(void)
     accel_gravity_compensated.az = accel_filtered.az;
 
     // ACCEL CONVERSION TO VELOCITY
-    vehicleStates.xVelocity += time_elapsed * accel_gravity_compensated.ax * 9.81f / VEHICLE_MASS;
+    vehicleStates.xVelocity += time_elapsed * accel_gravity_compensated.ax * 9.81f;
     if (vehicleStates.xVelocity <= 0)
     {
         vehicleStates.xVelocity = 0;

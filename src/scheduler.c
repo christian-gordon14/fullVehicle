@@ -46,7 +46,7 @@ static void wheelSpeedSensorsTask(void *pvParameters)
     while(1)
     {
         wheelSpeed_update();
-        vTaskDelayUntil(&lastWakeTime, pdMS_TO_TICKS(10));
+        vTaskDelayUntil(&lastWakeTime, pdMS_TO_TICKS(1));
     }
 }
 
@@ -85,10 +85,10 @@ static void vehicleVelocityEstimationTask(void *pvParameters)
 
 void scheduler_start(void)
 {
-    xTaskCreate(imuTask, "IMU", 4096, NULL, 7, NULL);
-    xTaskCreate(wheelSpeedSensorsTask, "Wheel Speed", 4096, NULL, 7, NULL);
-    xTaskCreate(vehicleVelocityEstimationTask, "Velocity Estimate", 4096, NULL, 6, NULL);
+    xTaskCreatePinnedToCore(imuTask, "IMU", 4096, NULL, 7, NULL, 0);
+    xTaskCreatePinnedToCore(wheelSpeedSensorsTask, "Wheel Speed", 4096, NULL, 7, NULL, 1);
+    xTaskCreatePinnedToCore(vehicleVelocityEstimationTask, "Velocity Estimate", 4096, NULL, 6, NULL, 1);
     xTaskCreatePinnedToCore(controllerTask, "Controller", 4096, NULL, 4, NULL, 1);
-    xTaskCreate(blueToothTask, "Bluetooth", 4096, NULL, 2, NULL);
+    xTaskCreatePinnedToCore(blueToothTask, "Bluetooth", 4096, NULL, 2, NULL, 1);
     printf("Tasks created\n");
 }

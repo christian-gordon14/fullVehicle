@@ -9,24 +9,6 @@
 // ============================================================
 // Configuration
 // ============================================================
-#define DT 0.002f
-#define RESISTANCE_ohms 6.4f
-#define DAMPING 0.001f
-#define KM 0.275f
-#define KN 0.2540f
-#define VEHICLE_FRICTION 0.3f
-
-// #define KP_WHEEL_SPEED 0.8f
-// #define KI_WHEEL_SPEED 1.28f
-// tuning
-#define KP_WHEEL_SPEED 0.01f
-#define KI_WHEEL_SPEED 4.3f
-#define KD_WHEEL_SPEED 0.0f
-
-#define KP_STABILITY 1.f
-#define MAX_YAW_OUTPUT 3.f
-#define MIN_YAW_OUTPUT -3.f
-#define TARGET_HEADING 0.0f
 
 // ============================================================
 // Private variables
@@ -117,7 +99,7 @@ float wheelFeedForward(float target_wheel_speed)
 
 Controller_outputs updateControl(void)
 {
-    float target = writeSpeed() ? 13.f : 0.f;
+    float target = writeSpeed() ? TARGET_WHEEL_SPEED : 0.f;
     // printf("target = %.2f, writeSpeed = %d\n", target, writeSpeed());
     VehicleStates vehicleStates = imu_get_states();
     float yaw_heading_pid_output = PIDController(&yaw_heading_pid, vehicleStates.heading);
