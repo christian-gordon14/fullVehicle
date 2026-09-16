@@ -16,6 +16,8 @@ typedef struct {
 
 #define WHEEL_RADIUS 0.032f
 
+#define SLIDING_ACCEL_MAX 3e-5
+
 void kalmanFilter(void);
 float get_vehicle_velocity_estimate_KF(void);
 
