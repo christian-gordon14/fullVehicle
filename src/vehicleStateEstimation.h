@@ -36,7 +36,7 @@ typedef struct {
 
 
 // misc
-#define SLIDING_ACCEL_MAX 3e-5
+#define SLIDING_ACCEL_MAX 2e-5
 
 // function definitions
 float get_model_wheel_speeds(Wheel wheel);

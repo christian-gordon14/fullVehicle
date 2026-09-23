@@ -136,7 +136,7 @@ static void kalmanFilter_velocityEstimate(void)
     vehicle_Estimates.vehicle_speed_estimate += dt * accelValues.ax * 9.81f;
 
     // vehicle is stopped
-    if ((vehicle_Estimates.vehicle_speed_estimate < 0.f) || ((averaged_wheel_speed == 0.f) && (sliding_accel_sum_squared < SLIDING_ACCEL_MAX)) || (sliding_accel_sum_squared < SLIDING_ACCEL_MAX))
+    if ((vehicle_Estimates.vehicle_speed_estimate < 0.f) || ((averaged_wheel_speed == 0.f) && (sliding_accel_sum_squared < SLIDING_ACCEL_MAX) && (final_velcity_estimate <= 0.f)))
     {
         vehicle_velcocity_prediction = 0.f;
         vehicle_Estimates.vehicle_speed_estimate = 0.f;
@@ -150,13 +150,13 @@ static void kalmanFilter_velocityEstimate(void)
     vehicle_Estimates.vehicle_speed_estimate += vehicle_estimate_Kalman_Parameters.kalman_gain * (averaged_wheel_speed * WHEEL_RADIUS - vehicle_Estimates.vehicle_speed_estimate);
     vehicle_estimate_Kalman_Parameters.error_covariance -= vehicle_estimate_Kalman_Parameters.kalman_gain * vehicle_estimate_Kalman_Parameters.error_covariance;
     
-    if (sliding_accel_sum_squared < SLIDING_ACCEL_MAX)
+    if (fabsf(final_velcity_estimate - TARGET_WHEEL_SPEED * WHEEL_RADIUS) < 0.15f * TARGET_WHEEL_SPEED * WHEEL_RADIUS)
     {
-        velocity_lamda -= 0.005f;
+        velocity_lamda -= 0.01f;
     }
     else
     {
-        velocity_lamda += 0.005f;
+        velocity_lamda += 0.01f;
     }
 
     if (velocity_lamda > 1.f) velocity_lamda = 1.f;
