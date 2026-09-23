@@ -7,7 +7,7 @@
 
 #define PWM_MAX_DUTY 1023
 #define MAX_VOLTAGE 7.f
-#define MIN_VOLTAGE 0.f
+#define MIN_VOLTAGE -7.f
 
 typedef struct{
     gpio_num_t in;

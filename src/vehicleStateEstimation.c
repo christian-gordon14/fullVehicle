@@ -59,7 +59,8 @@ static void wheelSpeedModel(void)
     last_time = start_time;
 
     float *Vs = get_voltage_output();
-    float F_surface = 5.25f; 
+    // float F_surface = 6.0f; 
+    float F_surface = 3.f; 
 
     for (Wheel wheel = 0; wheel < WHEEL_COUNT; wheel++)
     {

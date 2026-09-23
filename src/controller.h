@@ -6,14 +6,20 @@
 #define DT 0.002f
 #define RESISTANCE_ohms 6.4f
 #define DAMPING 0.001f
-#define VEHICLE_FRICTION 0.3f
+#define VEHICLE_FRICTION 0.13f
 
 
 // #define KP_WHEEL_SPEED 0.8f
 // #define KI_WHEEL_SPEED 1.28f
 // tuning
-#define KP_WHEEL_SPEED 0.01f
-#define KI_WHEEL_SPEED 4.3f
+// low voltage
+// #define KP_WHEEL_SPEED 0.01f
+// #define KI_WHEEL_SPEED 4.3f
+
+// high voltage
+#define KP_WHEEL_SPEED 0.015f
+#define KI_WHEEL_SPEED 0.8f
+
 #define KD_WHEEL_SPEED 0.0f
 
 #define KP_STABILITY 1.f
