@@ -11,7 +11,7 @@
 #include "controller.h"
 #include "bluetoothSend.h"
 #include "bluetoothReceive.h"
-#include "sharedFunctions.h"
+#include "vehicleStateEstimation.h"
 // ============================================================
 // Configuration
 // ============================================================
@@ -75,7 +75,7 @@ static void vehicleVelocityEstimationTask(void *pvParameters)
     TickType_t lastWakeTime = xTaskGetTickCount();
     while(1)
     {
-        kalmanFilter();
+        call_VSE();
         vTaskDelayUntil(&lastWakeTime, pdMS_TO_TICKS(1));
     }
 }

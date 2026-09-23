@@ -1,10 +1,11 @@
 #ifndef CONTROLLER_H
 #define CONTROLLER_H
+
+#include "vehicleStateEstimation.h"
+
 #define DT 0.002f
 #define RESISTANCE_ohms 6.4f
 #define DAMPING 0.001f
-#define KM 0.275f
-#define KN 0.2540f
 #define VEHICLE_FRICTION 0.3f
 
 
@@ -48,4 +49,6 @@ typedef struct {
 float PIDController(PID_params *controller, float measurement);
 float wheelFeedForward(float target_wheel_speed);
 Controller_outputs updateControl(void);
+float get_wheel_speed_target(void);
+float *get_voltage_output(void);
 #endif

@@ -12,7 +12,7 @@
 #include "imu.h"
 #include "controller.h"
 #include "vehicleDynamics.h"
-#include "sharedFunctions.h"
+#include "vehicleStateEstimation.h"
 
 static uint16_t connection_handle = BLE_HS_CONN_HANDLE_NONE;
 static uint16_t characteristic_handle = 0;
@@ -62,14 +62,19 @@ void bluetooth_send_sensor_data(void)
     float rl = wheelSpeed_get(WHEEL_RL);
     float rr = wheelSpeed_get(WHEEL_RR);
 
+    float fl_est = get_wheel_speeds_estimate_KF(WHEEL_FL);
+    float fr_est = get_wheel_speeds_estimate_KF(WHEEL_FR);
+    float rl_est = get_wheel_speeds_estimate_KF(WHEEL_RL);
+    float rr_est = get_wheel_speeds_estimate_KF(WHEEL_RR);
+
     AccelValues accel = imu_get_accel();
     GyroValues gyro = imu_get_gyro();
     VehicleStates vehicleStates = imu_get_states();
 
     Controller_outputs controller_outputs = updateControl();
 
-    WheelStruct wheelForces = getWheelForces();
-    WheelStruct slipRatios = getSlipRatios();
+    // WheelStruct wheelForces = getWheelForces();
+    // WheelStruct slipRatios = getSlipRatios();
 
     float velocity_estimate_KF = get_vehicle_velocity_estimate_KF();
 
@@ -84,8 +89,8 @@ void bluetooth_send_sensor_data(void)
         "%.4f, %.4f, %.4f,"
         "%.4f,"
         "%.4f,%.4f,%.4f,%.4f,"
-        "%.4f",
-        // "%.4f,%.4f,%.4f,%.4f,"
+        "%.4f,"
+        "%.4f,%.4f,%.4f,%.4f",
         // "%.4f,%.4f,%.4f,%.4f",
 
 
@@ -110,7 +115,9 @@ void bluetooth_send_sensor_data(void)
         controller_outputs.PID_wheel_speed_RL,
         controller_outputs.PID_wheel_speed_RR,
 
-        velocity_estimate_KF
+        velocity_estimate_KF,
+
+        fl_est, fr_est, rl_est, rr_est
 
         // controller_outputs.PID_heading,
 

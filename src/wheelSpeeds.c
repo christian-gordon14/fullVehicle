@@ -11,6 +11,9 @@
 #include "esp_adc/adc_cali.h"
 #include "esp_adc/adc_cali_scheme.h"
 
+#include "controller.h"
+#include "sharedFunctions.h"
+
 // ============================================================
 // Configuration
 // ============================================================
@@ -74,13 +77,6 @@ static const HallADCConfig hall_adc_config[WHEEL_COUNT] =
 static void initializeADC(void);
 static void read_hall_sensors(void);
 static void updateWheelSpeed(Wheel wheel);
-static void lowPassFilter(float *current_value, float *filtered_value, float LPF_ALPHA);
-
-
-static void lowPassFilter(float *current_value, float *filtered_value, float LPF_ALPHA)
-{
-    *filtered_value = LPF_ALPHA * (*current_value) + (1.0f - LPF_ALPHA) * (*filtered_value);
-}
 
 static void initializeADC(void)
 {
@@ -148,6 +144,7 @@ static void updateWheelSpeed(Wheel wheel)
         wheel_speed_timeout_us = 1.0e6f;
     }
 
+    float target_wheel_speed = get_wheel_speed_target();
     // finding the dt between pulses and actually calculating wheel speed
     if ((ws->hall_value_raw >= HALL_THRESHOLD) && (ws->previous_hall_value_raw < HALL_THRESHOLD))
     {
@@ -169,7 +166,7 @@ static void updateWheelSpeed(Wheel wheel)
     }
 
     // settign the wheel speed to zero
-    if (ws->last_time != 0 && (this_time - ws->last_time) > wheel_speed_timeout_us)
+    if (((ws->last_time != 0) && ((this_time - ws->last_time) > wheel_speed_timeout_us)) || (target_wheel_speed == 0.f))
     {
         ws->wheel_speed_measured = 0.0f;
         ws->new_measurement = true;

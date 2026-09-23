@@ -9,6 +9,8 @@
 #include "nvs.h"
 #include "esp_timer.h"
 
+#include "sharedFunctions.h"
+
 // ============================================================
 // Configuration
 // ============================================================
@@ -107,7 +109,6 @@ static void init_i2c(void);
 static esp_err_t add_imu_device(uint16_t address);
 static void write_register(uint8_t reg, uint8_t value);
 static esp_err_t read_register(uint8_t reg, uint8_t *data, size_t len);
-static void low_pass_filter(float current_sample, float *filtered_value, float LPF_ALPHA);
 static void scan_i2c(void);
 
 // ============================================================
@@ -190,12 +191,6 @@ static esp_err_t read_register(uint8_t reg, uint8_t *data, size_t len)
         len,
         -1
     );
-}
-
-static void low_pass_filter(float current_sample, float *filtered_value, float LPF_ALPHA)
-{
-    *filtered_value = LPF_ALPHA * current_sample +
-                      (1.0f - LPF_ALPHA) * (*filtered_value);
 }
 
 // ============================================================
@@ -335,13 +330,13 @@ void imu_update(void)
         return;
     }
 
-    low_pass_filter(gx, &gyro_filtered.gx, LPF_ALPHA_GYRO);
-    low_pass_filter(gy, &gyro_filtered.gy, LPF_ALPHA_GYRO);
-    low_pass_filter(gz, &gyro_filtered.gz, LPF_ALPHA_GYRO);
+    lowPassFilter(&gx, &gyro_filtered.gx, LPF_ALPHA_GYRO);
+    lowPassFilter(&gy, &gyro_filtered.gy, LPF_ALPHA_GYRO);
+    lowPassFilter(&gz, &gyro_filtered.gz, LPF_ALPHA_GYRO);
 
-    low_pass_filter(ax, &accel_filtered.ax, LPF_ALPHA_XL);
-    low_pass_filter(ay, &accel_filtered.ay, LPF_ALPHA_XL);
-    low_pass_filter(az, &accel_filtered.az, LPF_ALPHA_XL);
+    lowPassFilter(&ax, &accel_filtered.ax, LPF_ALPHA_XL);
+    lowPassFilter(&ay, &accel_filtered.ay, LPF_ALPHA_XL);
+    lowPassFilter(&az, &accel_filtered.az, LPF_ALPHA_XL);
 
     float pitch_accel = atan2f(accel_filtered.ax, sqrtf(accel_filtered.ay * accel_filtered.ay + accel_filtered.az * accel_filtered.az)) * 180.f / PI;
     float roll_accel = atan2f(accel_filtered.ay, sqrtf(accel_filtered.ax * accel_filtered.ax + accel_filtered.az * accel_filtered.az)) * 180.f / PI;

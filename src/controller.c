@@ -57,6 +57,10 @@ static PID_params yaw_heading_pid = {
     .target = TARGET_HEADING,
 };
 
+float voltage = 0.f;
+
+static float wheel_voltage_v[WHEEL_COUNT] = {0};
+
 // ============================================================
 // Public variables
 // ============================================================
@@ -100,7 +104,6 @@ float wheelFeedForward(float target_wheel_speed)
 Controller_outputs updateControl(void)
 {
     float target = writeSpeed() ? TARGET_WHEEL_SPEED : 0.f;
-    // printf("target = %.2f, writeSpeed = %d\n", target, writeSpeed());
     VehicleStates vehicleStates = imu_get_states();
     float yaw_heading_pid_output = PIDController(&yaw_heading_pid, vehicleStates.heading);
     float ff_output = wheelFeedForward(target);
@@ -109,14 +112,24 @@ Controller_outputs updateControl(void)
     for(Wheel wheel = 0; wheel < WHEEL_COUNT; wheel++)
     {
         // wheel speed
-        wheel_speed_pid[wheel].target = target;        
+        wheel_speed_pid[wheel].target = target; 
+        
+        if(target == 0.f)
+        {
+            wheel_speed_pid[wheel].integral = 0.f;
+        }
         float wheel_speed_measurement = wheelSpeed_get(wheel);
         float pid_output = PIDController(&wheel_speed_pid[wheel], wheel_speed_measurement);
         // heading
         float scale = (wheel == WHEEL_FL || wheel == WHEEL_RL) ? -1.0f : 1.0f;
 
         // sum and setting motors
-        float voltage = pid_output + ff_output + scale * yaw_heading_pid_output;
+        voltage = pid_output + ff_output + scale * yaw_heading_pid_output;
+        if (voltage >= MAX_VOLTAGE)
+        {
+            voltage = MAX_VOLTAGE;
+        }
+        wheel_voltage_v[wheel] = voltage;
         motorDriver_setVoltage(wheel, voltage);
 
         // returning controls
@@ -139,6 +152,25 @@ Controller_outputs updateControl(void)
         }
     }
     controller_outputs.feedforward = ff_output;
-    controller_outputs.PID_heading = yaw_heading_pid_output;
+    if(ff_output != 0.f)
+    {
+        controller_outputs.PID_heading = yaw_heading_pid_output;
+    } 
+    else
+    {
+        controller_outputs.PID_heading = 0.f;
+    }
+    
     return controller_outputs;
+}
+
+float get_wheel_speed_target(void)
+{
+    float target = writeSpeed() ? TARGET_WHEEL_SPEED : 0.f;
+    return target;
+}
+
+float *get_voltage_output(void)
+{
+    return wheel_voltage_v;
 }

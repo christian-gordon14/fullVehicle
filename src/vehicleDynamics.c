@@ -1,15 +1,14 @@
 #include "vehicleDynamics.h"
 #include "imu.h"
 #include "wheelSpeeds.h"
+#include "vehicleStateEstimation.h"
 
 #include <math.h>
 // ============================================================
 // Configuration
 // ============================================================
-#define VEHICLE_MASS 0.75f
 #define GRAVITY 9.81f
 #define MU 1.0f
-#define WHEEL_RADIUS 0.032f
 
 // ============================================================
 // Function Declaration
